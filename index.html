@@ -4,698 +4,109 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CryptoZavod Sakhalin — Инвест‑проект</title>
-    <meta name="description" content="Инвестиционный проект дата-центра на Сахалине. Низкая цена на электричество, прямые поставки, ROI‑калькулятор." />
-    <meta property="og:title" content="CryptoZavod Sakhalin — Инвест‑проект" />
-    <meta property="og:description" content="Дата‑центр на Сахалине. Низкая цена на электричество, прямые поставки. Live BTC/USDT и ROI‑калькулятор." />
-    <meta property="og:type" content="website" />
+    <meta name="description" content="Дата‑центр на Сахалине. Низкая цена на электричество, прямые поставки, ROI‑калькулятор." />
     <meta name="color-scheme" content="dark" />
-
-    <!-- Tailwind CDN (Play) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React 18 + ReactDOM UMD -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel standalone with React + TypeScript presets -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-      html, body, #root { height: 100%; }
-      body { margin: 0; background: #020617; }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+    <style>html,body,#root{height:100%}body{margin:0;background:#020617}</style>
   </head>
   <body>
     <div id="root"></div>
-
-    <script type="text/babel" data-presets="react,typescript">
+    <script type="text/babel">
       const { useEffect, useMemo, useRef, useState } = React;
-
-      function CryptoZavodSakhalin() {
-        const [lang, setLang] = useState<'ru' | 'en'>('ru');
-        const [btcUsd, setBtcUsd] = useState<number | null>(null);
-        const [usdtUsd, setUsdtUsd] = useState<number | null>(null);
-        const [usdRub, setUsdRub] = useState<number | null>(null);
-        const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-        const [elec, setElec] = useState<number>(() => {
-          const saved = localStorage.getItem('cz_electricity');
-          return saved ? parseFloat(saved) : 0.04; // $/kWh default
-        });
-        useEffect(() => {
-          localStorage.setItem('cz_electricity', String(elec));
-        }, [elec]);
-
-        const ISLAND_BG_URL = 'https://upload.wikimedia.org/wikipedia/commons/5/58/Sakhalin_Terra_MODIS.jpg';
-
-        // History for sparklines
-        const [btcHist, setBtcHist] = useState<number[]>([]);
-        const [usdtHist, setUsdtHist] = useState<number[]>([]);
-
-        async function fetchBTC() {
-          const attempts = [
-            async () => {
-              const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-              const j = await r.json();
-              if (!j?.price) throw new Error('binance');
-              return parseFloat(j.price);
-            },
-            async () => {
-              const r = await fetch('https://api.coincap.io/v2/assets/bitcoin');
-              const j = await r.json();
-              if (!j?.data?.priceUsd) throw new Error('coincap');
-              return parseFloat(j.data.priceUsd);
-            },
-          ];
-          for (const a of attempts) {
-            try {
-              const v = await a();
-              if (v && Number.isFinite(v)) return v;
-            } catch {}
-          }
-          throw new Error('All BTC sources failed');
-        }
-
-        async function fetchUSDT() {
-          const attempts = [
-            async () => {
-              const r = await fetch('https://api.coincap.io/v2/assets/tether');
-              const j = await r.json();
-              if (!j?.data?.priceUsd) throw new Error('coincap');
-              return parseFloat(j.data.priceUsd);
-            },
-            async () => {
-              const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTUSD');
-              const j = await r.json();
-              if (!j?.price) throw new Error('binance');
-              return parseFloat(j.price);
-            },
-          ];
-          for (const a of attempts) {
-            try {
-              const v = await a();
-              if (v && Number.isFinite(v)) return v;
-            } catch {}
-          }
-          return 1;
-        }
-
-        async function fetchUSDRUB() {
-          const attempts = [
-            async () => {
-              const r = await fetch('https://open.er-api.com/v6/latest/USD');
-              const j = await r.json();
-              if (j?.result === 'success' && j?.rates?.RUB) return j.rates.RUB;
-              throw new Error('erapi');
-            },
-            async () => {
-              const r = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=RUB');
-              const j = await r.json();
-              if (j?.rates?.RUB) return j.rates.RUB;
-              throw new Error('exhost');
-            },
-          ];
-          for (const a of attempts) {
-            try {
-              const v = await a();
-              if (v && Number.isFinite(v)) return v;
-            } catch {}
-          }
-          throw new Error('All FX sources failed');
-        }
-
-        async function fetchHistoryCoincap(asset: 'bitcoin' | 'tether') {
-          try {
-            const r = await fetch(`https://api.coincap.io/v2/assets/${asset}/history?interval=h1`);
-            const j = await r.json();
-            const arr = (j?.data || []).map((d: any) => parseFloat(d.priceUsd)).filter((n: any) => Number.isFinite(n));
-            return arr.slice(-24);
-          } catch {
-            return [] as number[];
-          }
-        }
-
-        async function refreshPrices() {
-          try {
-            const [b, t, u] = await Promise.all([fetchBTC(), fetchUSDT(), fetchUSDRUB()]);
-            setBtcUsd(b);
-            setUsdtUsd(t);
-            setUsdRub(u);
-            setLastUpdated(new Date());
-          } catch (e) {
-            setLastUpdated(new Date());
-          }
-        }
-
-        useEffect(() => {
-          refreshPrices();
-          const id = setInterval(refreshPrices, 30000);
-          const loadHist = async () => {
-            const [bh, uh] = await Promise.all([
-              fetchHistoryCoincap('bitcoin'),
-              fetchHistoryCoincap('tether'),
-            ]);
-            setBtcHist(bh);
-            setUsdtHist(uh);
-          };
-          loadHist();
-          const histId = setInterval(loadHist, 300000);
-          return () => { clearInterval(id); clearInterval(histId); };
-        }, []);
-
-        const fmtUSD = useMemo(() => new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }), [lang]);
-        const fmtRUB = useMemo(() => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }), []);
-
-        // Arena for coin trail
-        const arenaRef = useRef<HTMLDivElement | null>(null);
-        type Coin = {id:number;x:number;y:number;vx:number;vy:number;rot:number;life:number};
-        const [coins, setCoins] = useState<Coin[]>([]);
-        const [cursor, setCursor] = useState<{x:number;y:number}>({x: 0, y: 0});
-        const idRef = useRef(0);
-        const rafRef = useRef<number | null>(null);
-        const lastTimeRef = useRef<number>(0);
-
-        useEffect(() => {
-          const arena = arenaRef.current;
-          if (!arena) return;
-
-          const handleMove = (e: MouseEvent) => {
-            const rect = arena.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            setCursor({ x, y });
-            const batch = Array.from({ length: 3 }, () => ({
-              id: ++idRef.current,
-              x, y,
-              vx: (Math.random() * 160 - 80),
-              vy: (-Math.random() * 120 - 40),
-              rot: Math.random() * 360,
-              life: 1.2,
-            }));
-            setCoins((c) => [...c, ...batch].slice(-250));
-          };
-
-          arena.addEventListener('mousemove', handleMove);
-
-          lastTimeRef.current = performance.now();
-          const animate = (t: number) => {
-            const dt = Math.min(0.033, (t - lastTimeRef.current) / 1000);
-            lastTimeRef.current = t;
-            setCoins((cs) => cs
-              .map((co) => ({
-                ...co,
-                x: co.x + co.vx * dt,
-                y: co.y + co.vy * dt,
-                vy: co.vy + 600 * dt,
-                rot: co.rot + 180 * dt,
-                life: co.life - dt,
-              }))
-              .filter((co) => co.life > 0)
-            );
-            rafRef.current = requestAnimationFrame(animate);
-          };
-          rafRef.current = requestAnimationFrame(animate);
-
-          return () => {
-            arena.removeEventListener('mousemove', handleMove);
-            if (rafRef.current) cancelAnimationFrame(rafRef.current);
-          };
-        }, []);
-
-        const t = translations[lang];
-
-        return (
-          <div className="min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden relative">
-            {/* Decorative grid */}
-            <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle_at_center,rgba(59,130,246,.15),transparent_60%),linear-gradient(0deg,transparent_24px,rgba(255,255,255,.04)_25px),linear-gradient(90deg,transparent_24px,rgba(255,255,255,.04)_25px)] bg-[length:100%_100%,26px_26px,26px_26px]" />
-            {/* Photo background of Sakhalin */}
-            <img src={ISLAND_BG_URL} alt="Sakhalin Island" className="pointer-events-none absolute inset-0 w-full h-full object-cover opacity-15 mix-blend-luminosity" />
-
-            {/* Header */}
-            <header className="relative z-10 flex items-center justify-between px-6 md:px-12 py-6">
-              <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-amber-300 to-yellow-600 shadow-lg shadow-amber-500/30 grid place-items-center text-slate-900 font-black">₿</div>
-                <div className="leading-tight">
-                  <div className="text-xl md:text-2xl font-bold tracking-tight">CryptoZavod Sakhalin</div>
-                  <div className="text-xs md:text-sm text-slate-300">{t.tagline}</div>
+      function App(){
+        const [lang,setLang]=useState('ru');
+        const [btcUsd,setBtcUsd]=useState(null);
+        const [usdtUsd,setUsdtUsd]=useState(null);
+        const [usdRub,setUsdRub]=useState(null);
+        const [lastUpdated,setLastUpdated]=useState(null);
+        const [elec,setElec]=useState(()=>{const s=localStorage.getItem('cz_electricity');return s?parseFloat(s):0.04;});
+        useEffect(()=>localStorage.setItem('cz_electricity',String(elec)),[elec]);
+        const ISLAND_BG_URL='https://upload.wikimedia.org/wikipedia/commons/5/58/Sakhalin_Terra_MODIS.jpg';
+        const [btcHist,setBtcHist]=useState([]);
+        const [usdtHist,setUsdtHist]=useState([]);
+        async function fetchBTC(){const a=[async()=>{const r=await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');const j=await r.json();if(!j.price)throw 0;return parseFloat(j.price);},async()=>{const r=await fetch('https://api.coincap.io/v2/assets/bitcoin');const j=await r.json();if(!j.data||!j.data.priceUsd)throw 0;return parseFloat(j.data.priceUsd);}];for(const f of a){try{const v=await f();if(Number.isFinite(v))return v;}catch{}}throw new Error('BTC price unavailable');}
+        async function fetchUSDT(){const a=[async()=>{const r=await fetch('https://api.coincap.io/v2/assets/tether');const j=await r.json();if(!j.data||!j.data.priceUsd)throw 0;return parseFloat(j.data.priceUsd);},async()=>{const r=await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTUSD');const j=await r.json();if(!j.price)throw 0;return parseFloat(j.price);}];for(const f of a){try{const v=await f();if(Number.isFinite(v))return v;}catch{}}return 1;}
+        async function fetchUSDRUB(){const a=[async()=>{const r=await fetch('https://open.er-api.com/v6/latest/USD');const j=await r.json();if(j&&j.result==='success'&&j.rates&&j.rates.RUB)return j.rates.RUB;throw 0;},async()=>{const r=await fetch('https://api.exchangerate.host/latest?base=USD&symbols=RUB');const j=await r.json();if(j&&j.rates&&j.rates.RUB)return j.rates.RUB;throw 0;}];for(const f of a){try{const v=await f();if(Number.isFinite(v))return v;}catch{}}throw new Error('FX unavailable');}
+        async function hist(asset){try{const r=await fetch(`https://api.coincap.io/v2/assets/${asset}/history?interval=h1`);const j=await r.json();const arr=(j&&j.data?j.data:[]).map(d=>parseFloat(d.priceUsd)).filter(Number.isFinite);return arr.slice(-24);}catch{return []}}
+        async function refresh(){try{const [b,t,u]=await Promise.all([fetchBTC(),fetchUSDT(),fetchUSDRUB()]);setBtcUsd(b);setUsdtUsd(t);setUsdRub(u);setLastUpdated(new Date());}catch{setLastUpdated(new Date());}}
+        useEffect(()=>{refresh();const id=setInterval(refresh,30000);const load=async()=>{const [bh,uh]=await Promise.all([hist('bitcoin'),hist('tether')]);setBtcHist(bh);setUsdtHist(uh);};load();const hid=setInterval(load,300000);return()=>{clearInterval(id);clearInterval(hid);};},[]);
+        const fmtUSD=useMemo(()=>new Intl.NumberFormat(lang==='ru'?'ru-RU':'en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}),[lang]);
+        const fmtRUB=useMemo(()=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}),[]);
+        const arenaRef=useRef(null);const [coins,setCoins]=useState([]);const idRef=useRef(0);const rafRef=useRef(null);const lastRef=useRef(0);
+        useEffect(()=>{const a=arenaRef.current;if(!a)return;const move=e=>{const r=a.getBoundingClientRect();const x=e.clientX-r.left;const y=e.clientY-r.top;const batch=Array.from({length:3},()=>({id:++idRef.current,x,y,vx:(Math.random()*160-80),vy:(-Math.random()*120-40),rot:Math.random()*360,life:1.2}));setCoins(c=>[...c,...batch].slice(-250));};a.addEventListener('mousemove',move);lastRef.current=performance.now();const anim=t=>{const dt=Math.min(0.033,(t-lastRef.current)/1000);lastRef.current=t;setCoins(cs=>cs.map(co=>({...co,x:co.x+co.vx*dt,y:co.y+co.vy*dt,vy:co.vy+600*dt,rot:co.rot+180*dt,life:co.life-dt})).filter(co=>co.life>0));rafRef.current=requestAnimationFrame(anim);};rafRef.current=requestAnimationFrame(anim);return()=>{a.removeEventListener('mousemove',move);if(rafRef.current)cancelAnimationFrame(rafRef.current);};},[]);
+        const t=tr[lang];
+        return (<div className="min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden relative">
+          <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle_at_center,rgba(59,130,246,.15),transparent_60%),linear-gradient(0deg,transparent_24px,rgba(255,255,255,.04)_25px),linear-gradient(90deg,transparent_24px,rgba(255,255,255,.04)_25px)] bg-[length:100%_100%,26px_26px,26px_26px]" />
+          <img src={ISLAND_BG_URL} alt="Sakhalin" className="pointer-events-none absolute inset-0 w-full h-full object-cover opacity-15 mix-blend-luminosity" />
+          <header className="relative z-10 flex items-center justify-between px-6 md:px-12 py-6">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-amber-300 to-yellow-600 shadow-lg shadow-amber-500/30 grid place-items-center text-slate-900 font-black">₿</div>
+              <div className="leading-tight"><div className="text-xl md:text-2xl font-bold tracking-tight">CryptoZavod Sakhalin</div><div className="text-xs md:text-sm text-slate-300">{t.tagline}</div></div>
+            </div>
+            <div className="flex items-center gap-2"><Lang lang={lang} setLang={setLang}/></div>
+          </header>
+          <main ref={arenaRef} className="relative z-10 px-6 md:px-12 pb-24">
+            <section className="grid lg:grid-cols-2 gap-8 items-center">
+              <div className="space-y-6">
+                <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">{t.hero1} <span className="text-sky-400">Sakhalin</span></h1>
+                <p className="text-slate-300 text-base md:text-lg max-w-2xl">{t.hero2}</p>
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl">
+                  <Card><div className="text-sm text-slate-400">{t.btcNow}</div><div className="mt-1 text-2xl md:text-3xl font-bold">{btcUsd!=null?fmtUSD.format(btcUsd):<span className="animate-pulse">{t.loading}</span>}</div>{btcUsd&&usdRub?<div className="text-sm text-slate-400 mt-1">≈ {fmtRUB.format(btcUsd*usdRub)}</div>:null}<div className="mt-2"><Spark data={btcHist}/></div><div className="text-xs text-slate-500 mt-2">{lastUpdated?`${t.updated}: ${lastUpdated.toLocaleTimeString()}`:t.fetching}</div></Card>
+                  <Card><div className="text-sm text-slate-400">{t.usdtNow}</div><div className="mt-1 text-2xl md:text-3xl font-bold">{usdtUsd!=null?fmtUSD.format(usdtUsd):<span className="animate-pulse">{t.loading}</span>}</div>{usdtUsd!=null&&usdRub?<div className="text-sm text-slate-400 mt-1">≈ {fmtRUB.format(usdtUsd*usdRub)}</div>:null}<div className="mt-2"><Spark data={usdtHist}/></div><div className="text-xs text-slate-500 mt-2">{lastUpdated?`${t.updated}: ${lastUpdated.toLocaleTimeString()}`:t.fetching}</div></Card>
+                  <Card><div className="text-sm text-slate-400">{t.powerPrice}</div><div className="mt-1 flex items-center gap-2"><input type="number" step="0.001" value={Number.isFinite(elec)?elec:0} onChange={e=>setElec(parseFloat(e.target.value))} className="w-28 rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"/><span className="text-lg font-semibold">$/kWh</span></div><div className="text-xs text-slate-500 mt-2">{t.editable}</div></Card>
+                  <Card><div className="text-sm text-slate-400">{t.location}</div><div className="mt-1 text-2xl md:text-3xl font-bold">Сахалин, РФ</div><div className="text-xs text-slate-500 mt-2">{t.sakhalinNote}</div></Card>
+                  <Card><div className="text-sm text-slate-400">{t.advantages}</div><ul className="mt-2 text-slate-200 text-sm space-y-1"><li>• {t.benefit1}</li><li>• {t.benefit2}</li><li>• {t.benefit3}</li><li>• {t.benefit4}</li></ul></Card>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <LangSwitcher lang={lang} setLang={setLang} />
-              </div>
-            </header>
-
-            <main ref={arenaRef} className="relative z-10 px-6 md:px-12 pb-24">
-              <section className="grid lg:grid-cols-2 gap-8 items-center">
-                <div className="space-y-6">
-                  <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">
-                    {t.hero1} <span className="text-sky-400">Sakhalin</span>
-                  </h1>
-                  <p className="text-slate-300 text-base md:text-lg max-w-2xl">{t.hero2}</p>
-
-                  {/* Stats cards */}
-                  <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl">
-                    <Card>
-                      <div className="text-sm text-slate-400">{t.btcNow}</div>
-                      <div className="mt-1 text-2xl md:text-3xl font-bold">
-                        {btcUsd ? <span>{fmtUSD.format(btcUsd)}</span> : <span className="animate-pulse">{t.loading}</span>}
-                      </div>
-                      {btcUsd && usdRub && <div className="text-sm text-slate-400 mt-1">≈ {fmtRUB.format(btcUsd * usdRub)}</div>}
-                      <div className="mt-2"><Sparkline data={btcHist} /></div>
-                      <div className="text-xs text-slate-500 mt-2">
-                        {lastUpdated ? `${t.updated}: ${lastUpdated.toLocaleTimeString()}` : t.fetching}
-                      </div>
-                    </Card>
-
-                    <Card>
-                      <div className="text-sm text-slate-400">{t.usdtNow}</div>
-                      <div className="mt-1 text-2xl md:text-3xl font-bold">
-                        {usdtUsd != null ? <span>{fmtUSD.format(usdtUsd)}</span> : <span className="animate-pulse">{t.loading}</span>}
-                      </div>
-                      {usdtUsd != null && usdRub && <div className="text-sm text-slate-400 mt-1">≈ {fmtRUB.format(usdtUsd * usdRub)}</div>}
-                      <div className="mt-2"><Sparkline data={usdtHist} /></div>
-                      <div className="text-xs text-slate-500 mt-2">
-                        {lastUpdated ? `${t.updated}: ${lastUpdated.toLocaleTimeString()}` : t.fetching}
-                      </div>
-                    </Card>
-
-                    <Card>
-                      <div className="text-sm text-slate-400">{t.powerPrice}</div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <input
-                          type="number"
-                          step="0.001"
-                          value={Number.isFinite(elec) ? elec : 0}
-                          onChange={(e) => setElec(parseFloat(e.target.value))}
-                          className="w-28 rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"
-                        />
-                        <span className="text-lg font-semibold">$/kWh</span>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-2">{t.editable}</div>
-                    </Card>
-
-                    <Card>
-                      <div className="text-sm text-slate-400">{t.location}</div>
-                      <div className="mt-1 text-2xl md:text-3xl font-bold">Сахалин, РФ</div>
-                      <div className="text-xs text-slate-500 mt-2">{t.sakhalinNote}</div>
-                    </Card>
-
-                    <Card>
-                      <div className="text-sm text-slate-400">{t.advantages}</div>
-                      <ul className="mt-2 text-slate-200 text-sm space-y-1">
-                        <li>• {t.benefit1}</li>
-                        <li>• {t.benefit2}</li>
-                        <li>• {t.benefit3}</li>
-                        <li>• {t.benefit4}</li>
-                      </ul>
-                    </Card>
+                <section className="mt-8 grid md:grid-cols-2 gap-6 max-w-3xl">
+                  <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl"><h3 className="text-lg font-bold mb-2">{t.aboutTitle}</h3><ul className="text-slate-200 text-sm space-y-1"><li>• {t.about1}</li><li>• {t.about2}</li><li>• {t.about3}</li><li>• {t.about4}</li></ul></div>
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl"><h3 className="text-lg font-bold mb-2">{t.servicesTitle}</h3><ul className="text-slate-200 text-sm space-y-1"><li>• {t.service1}</li><li>• {t.service2}</li><li>• {t.service3}</li><li>• {t.service4}</li><li>• {t.service5}</li></ul></div>
+                    <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl"><h3 className="text-lg font-bold mb-2">{t.swotTitle}</h3><ul className="text-slate-200 text-sm space-y-1"><li>• {t.swot1}</li><li>• {t.swot2}</li><li>• {t.swot3}</li><li>• {t.swot4}</li><li>• {t.swot5}</li><li>• {t.swot6}</li><li>• {t.swot7}</li></ul></div>
                   </div>
-
-                  {/* About / Services / Highlights */}
-                  <section className="mt-8 grid md:grid-cols-2 gap-6 max-w-3xl">
-                    <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl">
-                      <h3 className="text-lg font-bold mb-2">{t.aboutTitle}</h3>
-                      <ul className="text-slate-200 text-sm space-y-1">
-                        <li>• {t.about1}</li>
-                        <li>• {t.about2}</li>
-                        <li>• {t.about3}</li>
-                        <li>• {t.about4}</li>
-                      </ul>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl">
-                        <h3 className="text-lg font-bold mb-2">{t.servicesTitle}</h3>
-                        <ul className="text-slate-200 text-sm space-y-1">
-                          <li>• {t.service1}</li>
-                          <li>• {t.service2}</li>
-                          <li>• {t.service3}</li>
-                          <li>• {t.service4}</li>
-                          <li>• {t.service5}</li>
-                        </ul>
-                      </div>
-                      <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl">
-                        <h3 className="text-lg font-bold mb-2">{t.swotTitle}</h3>
-                        <ul className="text-slate-200 text-sm space-y-1">
-                          <li>• {t.swot1}</li>
-                          <li>• {t.swot2}</li>
-                          <li>• {t.swot3}</li>
-                          <li>• {t.swot4}</li>
-                          <li>• {t.swot5}</li>
-                          <li>• {t.swot6}</li>
-                          <li>• {t.swot7}</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </section>
-                </div>
-
-                {/* Contact / CTA */}
-                <div className="lg:pl-6">
-                  <div className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 md:p-8 shadow-2xl backdrop-blur-md">
-                    <h2 className="text-xl md:text-2xl font-bold mb-4">{t.contactTitle}</h2>
-                    <ul className="text-slate-200 space-y-2 text-sm md:text-base">
-                      <li><span className="text-slate-400">{t.company}:</span> LLC "IT Group"</li>
-                      <li><span className="text-slate-400">{t.person}:</span> Boikov Denis</li>
-                      <li><span className="text-slate-400">WhatsApp / WeChat:</span> +7 962 103 87 51</li>
-                      <li><span className="text-slate-400">Email:</span> boikovden1990@gmail.com</li>
-                      <li><span className="text-slate-400">Site:</span> cryptozavod-sakhalin.tilda.ws</li>
-                    </ul>
-                    <div className="mt-6 grid sm:grid-cols-2 gap-3">
-                      <a href="#" className="block text-center rounded-2xl bg-sky-500/90 hover:bg-sky-400 transition px-5 py-3 font-semibold shadow-lg shadow-sky-500/30">{t.requestDeck}</a>
-                      <a href="#" className="block text-center rounded-2xl border border-slate-700 hover:border-slate-500 transition px-5 py-3 font-semibold">{t.requestCall}</a>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-4">{t.disclaimer}</p>
-                  </div>
-                </div>
-              </section>
-
-              {/* ROI Calculator */}
-              <section className="mt-10 grid lg:grid-cols-2 gap-6 items-start">
-                <div className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 md:p-8 shadow-2xl">
-                  <h2 className="text-xl md:text-2xl font-bold mb-4">{t.calcTitle}</h2>
-                  <Calculator fmtUSD={fmtUSD} elec={elec} t={t} />
-                </div>
-                <div className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 md:p-8 shadow-2xl">
-                  <h3 className="text-lg md:text-xl font-bold mb-3">{t.calcNotesTitle}</h3>
-                  <ul className="text-slate-300 text-sm space-y-2 list-disc pl-5">
-                    <li>{t.calcNote1}</li>
-                    <li>{t.calcNote2}</li>
-                    <li>{t.calcNote3}</li>
+                </section>
+              </div>
+              <div className="lg:pl-6">
+                <div className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 md:p-8 shadow-2xl backdrop-blur-md">
+                  <h2 className="text-xl md:text-2xl font-bold mb-4">{t.contactTitle}</h2>
+                  <ul className="text-slate-200 space-y-2 text-sm md:text-base">
+                    <li><span className="text-slate-400">{t.company}:</span> LLC "IT Group"</li>
+                    <li><span className="text-slate-400">{t.person}:</span> Boikov Denis</li>
+                    <li><span className="text-slate-400">WhatsApp / WeChat:</span> +7 962 103 87 51</li>
+                    <li><span className="text-slate-400">Email:</span> boikovden1990@gmail.com</li>
+                    <li><span className="text-slate-400">Site:</span> cryptozavod-sakhalin.tilda.ws</li>
                   </ul>
-                </div>
-              </section>
-
-              {/* Coin Trail Layer */}
-              <CoinTrail coins={coins} />
-            </main>
-
-            {/* Footer */}
-            <footer className="relative z-10 px-6 md:px-12 py-6 text-xs text-slate-400 flex items-center justify-between">
-              <div>© {new Date().getFullYear()} CryptoZavod Sakhalin</div>
-              <div>{t.madeWith} ⚙️</div>
-            </footer>
-          </div>
-        );
-      }
-
-      function Card({ children }: { children: React.ReactNode }) {
-        return (
-          <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl backdrop-blur-md">
-            {children}
-          </div>
-        );
-      }
-
-      function LangSwitcher({ lang, setLang }: { lang: 'ru' | 'en'; setLang: (l: 'ru' | 'en') => void }) {
-        return (
-          <div className="flex items-center gap-2 bg-slate-900/70 border border-slate-800 rounded-2xl p-1">
-            <button onClick={() => setLang('ru')} className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${lang==='ru' ? 'bg-sky-600 text-white' : 'text-slate-300 hover:text-white'}`}>RU</button>
-            <button onClick={() => setLang('en')} className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${lang==='en' ? 'bg-sky-600 text-white' : 'text-slate-300 hover:text-white'}`}>EN</button>
-          </div>
-        );
-      }
-
-      function CoinTrail({ coins }: { coins: Array<{id:number;x:number;y:number;rot:number;life:number}> }) {
-        return (
-          <div className="pointer-events-none absolute inset-0">
-            {coins.map((c) => (
-              <div
-                key={c.id}
-                className="absolute"
-                style={{
-                  left: c.x,
-                  top: c.y,
-                  transform: `translate(-50%,-50%) rotate(${c.rot}deg)`,
-                  opacity: Math.max(0, Math.min(1, c.life)),
-                }}
-              >
-                <div className="relative grid place-items-center w-6 h-6 md:w-7 md:h-7 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-yellow-600 shadow-[0_6px_18px_rgba(245,158,11,0.45)]">
-                  <div className="absolute inset-0 rounded-full border border-amber-100/60" />
-                  <div className="absolute inset-[1px] rounded-full border border-amber-900/30" />
-                  <div className="text-slate-900 text-sm md:text-base font-black">₿</div>
+                  <div className="mt-6 grid sm:grid-cols-2 gap-3">
+                    <a href="#" className="block text-center rounded-2xl bg-sky-500/90 hover:bg-sky-400 transition px-5 py-3 font-semibold shadow-lg shadow-sky-500/30">{t.requestDeck}</a>
+                    <a href="#" className="block text-center rounded-2xl border border-slate-700 hover:border-slate-500 transition px-5 py-3 font-semibold">{t.requestCall}</a>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-4">{t.disclaimer}</p>
                 </div>
               </div>
-            ))}
-          </div>
-        );
-      }
-
-      function Sparkline({ data, height = 48 }: { data: number[]; height?: number }) {
-        const w = 200;
-        const h = height;
-        if (!data || data.length < 2) return <div className="h-[48px]"></div>;
-        const min = Math.min(...data);
-        const max = Math.max(...data);
-        const norm = (v: number) => (max - min === 0 ? 0.5 : (v - min) / (max - min));
-        const points = data.map((v, i) => {
-          const x = (i / (data.length - 1)) * w;
-          const y = h - norm(v) * h;
-          return `${x},${y}`;
-        }).join(' ');
-        return (
-          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full h-12">
-            <polyline points={points} fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="2" />
-          </svg>
-        );
-      }
-
-      function Calculator({ fmtUSD, elec, t }: { fmtUSD: Intl.NumberFormat; elec: number; t: any }) {
-        const models = [
-          { key: 's19k', name: 'Antminer S19k Pro (120 TH/s, 2.76 kW)', hr: 120, kw: 2.76 },
-          { key: 's21', name: 'Antminer S21 (200 TH/s, 3.5 kW)', hr: 200, kw: 3.5 },
-          { key: 'm60s', name: 'WhatsMiner M60S (180 TH/s, 3.3 kW)', hr: 180, kw: 3.3 },
-          { key: 'custom', name: t.customModel, hr: 100, kw: 3.0 },
-        ];
-        const [model, setModel] = React.useState(models[0].key);
-        const current = models.find(m => m.key === model)!;
-        const [hr, setHr] = React.useState<number>(current.hr);
-        const [kw, setKw] = React.useState<number>(current.kw);
-        const [fee, setFee] = React.useState<number>(2);
-        const [revPerTh, setRevPerTh] = React.useState<number>(0.05);
-        const [capex, setCapex] = React.useState<number>(0);
-
-        React.useEffect(() => {
-          const m = models.find(m => m.key === model)!;
-          if (model !== 'custom') { setHr(m.hr); setKw(m.kw); }
-        }, [model]);
-
-        const dailyRevenue = hr * revPerTh * (1 - fee / 100);
-        const dailyPower = kw * 24 * (Number.isFinite(elec) ? elec : 0);
-        const dailyProfit = dailyRevenue - dailyPower;
-        const paybackDays = dailyProfit > 0 && capex > 0 ? capex / dailyProfit : null;
-
-        return (
-          <div className="grid md:grid-cols-2 gap-5">
-            <div className="space-y-3">
-              <Labeled t={t} label={t.model}>
-                <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500">
-                  {models.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}
-                </select>
-              </Labeled>
-              <Labeled t={t} label={`${t.hashrate} (TH/s)`}>
-                <input type="number" step="1" value={hr} onChange={(e) => setHr(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500" />
-              </Labeled>
-              <Labeled t={t} label={`${t.power} (kW)`}>
-                <input type="number" step="0.01" value={kw} onChange={(e) => setKw(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500" />
-              </Labeled>
-              <Labeled t={t} label={`${t.poolFee} (%)`}>
-                <input type="number" step="0.1" value={fee} onChange={(e) => setFee(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500" />
-              </Labeled>
-              <Labeled t={t} label={`${t.revPerTh} ($/TH/day)`}>
-                <input type="number" step="0.001" value={revPerTh} onChange={(e) => setRevPerTh(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500" />
-                <div className="text-xs text-slate-400 mt-1">{t.revHint}</div>
-              </Labeled>
-              <Labeled t={t} label={`${t.capex} ($)`}>
-                <input type="number" step="10" value={capex} onChange={(e) => setCapex(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500" />
-              </Labeled>
-            </div>
-            <div className="grid gap-3 content-start">
-              <SummaryRow t={t} label={t.dailyRevenue} value={fmtUSD.format(isFinite(dailyRevenue) ? dailyRevenue : 0)} />
-              <SummaryRow t={t} label={t.dailyPowerCost} value={fmtUSD.format(isFinite(dailyPower) ? dailyPower : 0)} />
-              <SummaryRow t={t} label={t.dailyProfit} value={fmtUSD.format(isFinite(dailyProfit) ? dailyProfit : 0)} strong />
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-                <div className="text-sm text-slate-400">{t.payback}</div>
-                <div className="text-2xl font-bold mt-1">
-                  {paybackDays ? `${Math.ceil(paybackDays)} ${t.days} (~${Math.ceil(paybackDays/30)} ${t.months})` : t.na}
-                </div>
+            </section>
+            <section className="mt-10 grid lg:grid-cols-2 gap-6 items-start">
+              <div className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 md:p-8 shadow-2xl">
+                <h2 className="text-xl md:text-2xl font-bold mb-4">{t.calcTitle}</h2>
+                <Calc fmtUSD={v=>new Intl.NumberFormat(lang==='ru'?'ru-RU':'en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(v)} elec={elec} t={t} />
               </div>
-            </div>
-          </div>
-        );
-      }
-
-      function Labeled({ label, children, t }: { label: string; children: React.ReactNode; t: any }) {
-        return (
-          <label className="block">
-            <div className="text-sm text-slate-400 mb-1">{label}</div>
-            {children}
-          </label>
-        );
-      }
-
-      function SummaryRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-        return (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex items-center justify-between">
-            <div className="text-sm text-slate-400">{label}</div>
-            <div className={`text-lg ${strong ? 'font-extrabold' : 'font-bold'}`}>{value}</div>
-          </div>
-        );
-      }
-
-      function SakhalinSVG({ className = '' }: { className?: string }) {
-        return (
-          <svg viewBox="0 0 200 1000" className={className} aria-label="Sakhalin silhouette">
-            <defs>
-              <linearGradient id="island" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.7"/>
-                <stop offset="100%" stopColor="#1e3a8a" stopOpacity="0.7"/>
-              </linearGradient>
-            </defs>
-            <path
-              d="M120 10 C140 60 110 120 130 180 C150 240 120 300 135 360 C150 420 110 480 95 540 C80 600 110 660 90 720 C70 780 110 840 90 900 C70 960 100 990 120 990 C140 950 145 900 155 860 C165 820 165 780 150 740 C135 700 165 660 155 620 C145 580 115 540 120 500 C125 460 160 420 150 380 C140 340 100 300 105 260 C110 220 140 180 130 140 C120 100 90 60 100 30 Z"
-              fill="url(#island)"
-              stroke="#60a5fa"
-              strokeOpacity="0.4"
-              strokeWidth="2"
-            />
-          </svg>
-        );
-      }
-
-      const translations: Record<'ru' | 'en', any> = {
-        ru: {
-          tagline: 'Инвестиционный проект / дата-центр на Сахалине',
-          hero1: 'Высокодоходный дата-центр в',
-          hero2: 'Размещайте вычислительные мощности рядом с источником энергии. Прозрачные тарифы, прямые поставки и инфраструктура под крупные нагрузки.',
-          btcNow: 'Текущий курс биткоина',
-          usdtNow: 'Курс USDT',
-          loading: 'Загрузка…',
-          updated: 'Обновлено',
-          fetching: 'Обновляем котировки…',
-          powerPrice: 'Цена на электричество (редактируйте)',
-          editable: 'Значение сохраняется в браузере',
-          location: 'Локация',
-          sakhalinNote: 'Сахалин — выгодная площадка для энергетических проектов',
-          advantages: 'Преимущества',
-          benefit1: 'Низкая стоимость электроэнергии',
-          benefit2: 'Налоговые преференции и гибкие модели',
-          benefit3: 'Отсутствие лимитов по мощности (по согласованию)',
-          benefit4: 'Прямые поставки оборудования из Китая',
-          aboutTitle: 'О проекте',
-          about1: 'Контейнерная инфраструктура для размещения оборудования',
-          about2: 'Мощность от 1 МВт и выше',
-          about3: 'Источник энергии — природный газ',
-          about4: 'Льготы ТОР, включая 0% по ряду налогов',
-          servicesTitle: 'Услуги и возможности',
-          service1: 'Расчёт окупаемости',
-          service2: 'Прогноз доходности по сценариям',
-          service3: 'Размещение оборудования (ASIC/GPU)',
-          service4: 'Подключение к энергоресурсам',
-          service5: 'Техническая поддержка',
-          swotTitle: 'Сильные стороны',
-          swot1: 'Масштабируемость контейнерных мощностей',
-          swot2: 'Энергоэффективность (природный газ)',
-          swot3: 'Льготы ТОР',
-          swot4: 'Низкая стоимость электричества',
-          swot5: 'Прогнозируемая доходность',
-          swot6: 'Экологичность',
-          swot7: 'Современные технологии',
-          contactTitle: 'Контакты и материалы',
-          company: 'Компания',
-          person: 'Контакт',
-          requestDeck: 'Запросить презентацию',
-          requestCall: 'Назначить звонок',
-          disclaimer: 'Курс BTC/USDT и FX подгружается из публичных источников и носит справочный характер.',
-          madeWith: 'Сделано с заботой о хэшрейте',
-          // Calculator
-          calcTitle: 'Мини‑калькулятор окупаемости',
-          calcNotesTitle: 'Допущения и замечания',
-          calcNote1: 'Параметр «$/TH/день» — ориентировочный, зависит от цены BTC и сложности сети. Изменяйте под текущий рынок.',
-          calcNote2: 'Комиссия пула и простои снижают доход. Заложите резерв 1–3%.',
-          calcNote3: 'Это упрощённая модель. Для инвестрешения используйте детальный финансовый план.',
-          model: 'Модель',
-          customModel: 'Своя конфигурация',
-          hashrate: 'Хешрейт',
-          power: 'Потребление',
-          poolFee: 'Комиссия пула',
-          revPerTh: 'Доход на 1 TH/день',
-          revHint: 'Оценка брутто в долларах. Например, 0.05 $/TH/день.',
-          capex: 'CAPEX на установку',
-          dailyRevenue: 'Дневной доход',
-          dailyPowerCost: 'Дневная стоимость электроэнергии',
-          dailyProfit: 'Дневная прибыль',
-          payback: 'Окупаемость',
-          days: 'дн.',
-          months: 'мес.',
-          na: '—',
-        },
-        en: {
-          tagline: 'Investment project / data center on Sakhalin',
-          hero1: 'High‑yield data center in',
-          hero2: 'Deploy compute near energy sources. Transparent tariffs, direct supply, and infrastructure for large loads.',
-          btcNow: 'Bitcoin price (now)',
-          usdtNow: 'USDT price (now)',
-          loading: 'Loading…',
-          updated: 'Updated',
-          fetching: 'Fetching quotes…',
-          powerPrice: 'Electricity price (editable)',
-          editable: 'Value is saved in your browser',
-          location: 'Location',
-          sakhalinNote: 'Sakhalin is favorable for energy projects',
-          advantages: 'Advantages',
-          benefit1: 'Low electricity costs',
-          benefit2: 'Tax incentives & flexible models',
-          benefit3: 'No power limits (upon approval)',
-          benefit4: 'Direct supplies from China',
-          aboutTitle: 'About the project',
-          about1: 'Containerized infrastructure for equipment hosting',
-          about2: 'Power from 1 MW and up',
-          about3: 'Primary energy source: natural gas',
-          about4: 'TOR (TASED) incentives incl. 0% on select taxes',
-          servicesTitle: 'Services & capabilities',
-          service1: 'Payback calculation',
-          service2: 'Scenario‑based yield forecasts',
-          service3: 'ASIC/GPU colocation',
-          service4: 'Energy hookups',
-          service5: 'Technical support',
-          swotTitle: 'Highlights',
-          swot1: 'Scalable container capacity',
-          swot2: 'Energy efficiency (natural gas)',
-          swot3: 'TOR incentives',
-          swot4: 'Low electricity costs',
-          swot5: 'Forecastable returns',
-          swot6: 'Environmental friendliness',
-          swot7: 'Modern technologies',
-          contactTitle: 'Contacts & materials',
-          company: 'Company',
-          person: 'Contact',
-          requestDeck: 'Request pitch deck',
-          requestCall: 'Schedule a call',
-          disclaimer: 'BTC/USDT & FX are fetched from public sources for reference only.',
-          madeWith: 'Made with care for hashrate',
-          // Calculator
-          calcTitle: 'Mini payback calculator',
-          calcNotesTitle: 'Assumptions & notes',
-          calcNote1: 'The "$ per TH per day" parameter is indicative and depends on BTC price and network difficulty. Adjust to current market.',
-          calcNote2: 'Pool fees and downtime reduce revenue. Add 1–3% buffer.',
-          calcNote3: 'This is a simplified model. Use a detailed financial plan for decisions.',
-          model: 'Model',
-          customModel: 'Custom configuration',
-          hashrate: 'Hashrate',
-          power: 'Power draw',
-          poolFee: 'Pool fee',
-          revPerTh: 'Revenue per 1 TH/day',
-          revHint: 'Gross estimate in USD, e.g., 0.05 $/TH/day.',
-          capex: 'CAPEX per unit',
-          dailyRevenue: 'Daily revenue',
-          dailyPowerCost: 'Daily electricity cost',
-          dailyProfit: 'Daily profit',
-          payback: 'Payback',
-          days: 'days',
-          months: 'mo.',
-          na: 'N/A',
-        },
-      };
-
-      // Mount app
-      const root = ReactDOM.createRoot(document.getElementById('root')!);
-      root.render(<CryptoZavodSakhalin />);
+              <div className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 md:p-8 shadow-2xl">
+                <h3 className="text-lg md:text-xl font-bold mb-3">{t.calcNotesTitle}</h3>
+                <ul className="text-slate-300 text-sm space-y-2 list-disc pl-5"><li>{t.calcNote1}</li><li>{t.calcNote2}</li><li>{t.calcNote3}</li></ul>
+              </div>
+            </section>
+            <Trail coins={coins}/>
+          </main>
+          <footer className="relative z-10 px-6 md:px-12 py-6 text-xs text-slate-400 flex items-center justify-between"><div>© {new Date().getFullYear()} CryptoZavod Sakhalin</div><div>{t.madeWith} ⚙️</div></footer>
+        </div>);}
+      function Card({children}){return <div className="rounded-2xl border border-slate-800/70 bg-slate-900/60 p-5 shadow-xl backdrop-blur-md">{children}</div>;}
+      function Lang({lang,setLang}){return <div className="flex items-center gap-2 bg-slate-900/70 border border-slate-800 rounded-2xl p-1"><button onClick={()=>setLang('ru')} className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${lang==='ru'?'bg-sky-600 text-white':'text-slate-300 hover:text-white'}`}>RU</button><button onClick={()=>setLang('en')} className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${lang==='en'?'bg-sky-600 text-white':'text-slate-300 hover:text-white'}`}>EN</button></div>;}
+      function Spark({data,height=48}){const w=200,h=height;if(!data||data.length<2)return <div className="h-[48px]"></div>;const min=Math.min(...data),max=Math.max(...data);const norm=v=>(max-min===0?0.5:(v-min)/(max-min));const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-norm(v)*h}`).join(' ');return <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full h-12"><polyline points={pts} fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="2"/></svg>;}
+      function Calc({fmtUSD,elec,t}){const models=[{key:'s19k',name:'Antminer S19k Pro (120 TH/s, 2.76 kW)',hr:120,kw:2.76},{key:'s21',name:'Antminer S21 (200 TH/s, 3.5 kW)',hr:200,kw:3.5},{key:'m60s',name:'WhatsMiner M60S (180 TH/s, 3.3 kW)',hr:180,kw:3.3},{key:'custom',name:t.customModel,hr:100,kw:3.0},];const [model,setModel]=React.useState(models[0].key);const cur=models.find(m=>m.key===model);const [hr,setHr]=React.useState(cur.hr);const [kw,setKw]=React.useState(cur.kw);const [fee,setFee]=React.useState(2);const [rev,setRev]=React.useState(0.05);const [capex,setCapex]=React.useState(0);React.useEffect(()=>{const m=models.find(m=>m.key===model);if(model!=='custom'){setHr(m.hr);setKw(m.kw);}},[model]);const dailyRevenue=hr*rev*(1-fee/100);const dailyPower=kw*24*(Number.isFinite(elec)?elec:0);const dailyProfit=dailyRevenue-dailyPower;const pay=dailyProfit>0&&capex>0?capex/dailyProfit:null;return (<div className="grid md:grid-cols-2 gap-5"><div className="space-y-3"><label className="block"><div className="text-sm text-slate-400 mb-1">{t.model}</div><select value={model} onChange={e=>setModel(e.target.value)} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500">{models.map(m=><option key={m.key} value={m.key}>{m.name}</option>)}</select></label><label className="block"><div className="text-sm text-slate-400 mb-1">{t.hashrate} (TH/s)</div><input type="number" step="1" value={hr} onChange={e=>setHr(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"/></label><label className="block"><div className="text-sm text-slate-400 mb-1">{t.power} (kW)</div><input type="number" step="0.01" value={kw} onChange={e=>setKw(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"/></label><label className="block"><div className="text-sm text-slate-400 mb-1">{t.poolFee} (%)</div><input type="number" step="0.1" value={fee} onChange={e=>setFee(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"/></label><label className="block"><div className="text-sm text-slate-400 mb-1">{t.revPerTh} ($/TH/day)</div><input type="number" step="0.001" value={rev} onChange={e=>setRev(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"/><div className="text-xs text-slate-400 mt-1">{t.revHint}</div></label><label className="block"><div className="text-sm text-slate-400 mb-1">{t.capex} ($)</div><input type="number" step="10" value={capex} onChange={e=>setCapex(parseFloat(e.target.value))} className="w-full rounded-xl bg-slate-800/70 border border-slate-700 px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"/></label></div><div className="grid gap-3 content-start"><div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex items-center justify-between"><div className="text-sm text-slate-400">{t.dailyRevenue}</div><div className="text-lg font-bold">{fmtUSD(isFinite(dailyRevenue)?dailyRevenue:0)}</div></div><div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex items-center justify-between"><div className="text-sm text-slate-400">{t.dailyPowerCost}</div><div className="text-lg font-bold">{fmtUSD(isFinite(dailyPower)?dailyPower:0)}</div></div><div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex items-center justify-between"><div className="text-sm text-slate-400">{t.dailyProfit}</div><div className="text-lg font-extrabold">{fmtUSD(isFinite(dailyProfit)?dailyProfit:0)}</div></div><div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><div className="text-sm text-slate-400">{t.payback}</div><div className="text-2xl font-bold mt-1">{pay?`${Math.ceil(pay)} ${t.days} (~${Math.ceil(pay/30)} ${t.months})`:t.na}</div></div></div></div>);}
+      function Trail({coins}){return <div className="pointer-events-none absolute inset-0">{coins.map(c=><div key={c.id} className="absolute" style={{left:c.x,top:c.y,transform:`translate(-50%,-50%) rotate(${c.rot}deg)`,opacity:Math.max(0,Math.min(1,c.life))}}><div className="relative grid place-items-center w-6 h-6 md:w-7 md:h-7 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-yellow-600 shadow-[0_6px_18px_rgba(245,158,11,0.45)]"><div className="absolute inset-0 rounded-full border border-amber-100/60"></div><div className="absolute inset-[1px] rounded-full border border-amber-900/30"></div><div className="text-slate-900 text-sm md:text-base font-black">₿</div></div></div>)}</div>;}
+      const tr={ru:{tagline:'Инвестиционный проект / дата-центр на Сахалине',hero1:'Высокодоходный дата-центр в',hero2:'Размещайте вычислительные мощности рядом с источником энергии. Прозрачные тарифы, прямые поставки и инфраструктура под крупные нагрузки.',btcNow:'Текущий курс биткоина',usdtNow:'Курс USDT',loading:'Загрузка…',updated:'Обновлено',fetching:'Обновляем котировки…',powerPrice:'Цена на электричество (редактируйте)',editable:'Значение сохраняется в браузере',location:'Локация',sakhalinNote:'Сахалин — выгодная площадка для энергетических проектов',advantages:'Преимущества',benefit1:'Низкая стоимость электроэнергии',benefit2:'Налоговые преференции и гибкие модели',benefit3:'Отсутствие лимитов по мощности (по согласованию)',benefit4:'Прямые поставки оборудования из Китая',aboutTitle:'О проекте',about1:'Контейнерная инфраструктура для размещения оборудования',about2:'Мощность от 1 МВт и выше',about3:'Источник энергии — природный газ',about4:'Льготы ТОР, включая 0% по ряду налогов',servicesTitle:'Услуги и возможности',service1:'Расчёт окупаемости',service2:'Прогноз доходности по сценариям',service3:'Размещение оборудования (ASIC/GPU)',service4:'Подключение к энергоресурсам',service5:'Техническая поддержка',swotTitle:'Сильные стороны',swot1:'Масштабируемость контейнерных мощностей',swot2:'Энергоэффективность (природный газ)',swot3:'Льготы ТОР',swot4:'Низкая стоимость электричества',swot5:'Прогнозируемая доходность',swot6:'Экологичность',swot7:'Современные технологии',contactTitle:'Контакты и материалы',company:'Компания',person:'Контакт',requestDeck:'Запросить презентацию',requestCall:'Назначить звонок',disclaimer:'Курс BTC/USDT и FX подгружается из публичных источников и носит справочный характер.',madeWith:'Сделано с заботой о хэшрейте',calcTitle:'Мини‑калькулятор окупаемости',calcNotesTitle:'Допущения и замечания',calcNote1:'Параметр «$/TH/день» — ориентировочный, зависит от цены BTC и сложности сети. Изменяйте под текущий рынок.',calcNote2:'Комиссия пула и простои снижают доход. Заложите резерв 1–3%.',calcNote3:'Это упрощённая модель. Для инвестрешения используйте детальный финансовый план.',model:'Модель',customModel:'Своя конфигурация',hashrate:'Хешрейт',power:'Потребление',poolFee:'Комиссия пула',revPerTh:'Доход на 1 TH/день',revHint:'Оценка брутто в долларах. Например, 0.05 $/TH/день.',capex:'CAPEX на установку',dailyRevenue:'Дневной доход',dailyPowerCost:'Дневная стоимость электроэнергии',dailyProfit:'Дневная прибыль',payback:'Окупаемость',days:'дн.',months:'мес.',na:'—'},en:{tagline:'Investment project / data center on Sakhalin',hero1:'High‑yield data center in',hero2:'Deploy compute near energy sources. Transparent tariffs, direct supply, and infrastructure for large loads.',btcNow:'Bitcoin price (now)',usdtNow:'USDT price (now)',loading:'Loading…',updated:'Updated',fetching:'Fetching quotes…',powerPrice:'Electricity price (editable)',editable:'Value is saved in your browser',location:'Location',sakhalinNote:'Sakhalin is favorable for energy projects',advantages:'Advantages',benefit1:'Low electricity costs',benefit2:'Tax incentives & flexible models',benefit3:'No power limits (upon approval)',benefit4:'Direct supplies from China',aboutTitle:'About the project',about1:'Containerized infrastructure for equipment hosting',about2:'Power from 1 MW and up',about3:'Primary energy source: natural gas',about4:'TOR (TASED) incentives incl. 0% on select taxes',servicesTitle:'Services & capabilities',service1:'Payback calculation',service2:'Scenario‑based yield forecasts',service3:'ASIC/GPU colocation',service4:'Energy hookups',service5:'Technical support',swotTitle:'Highlights',swot1:'Scalable container capacity',swot2:'Energy efficiency (natural gas)',swot3:'TOR incentives',swot4:'Low electricity costs',swot5:'Forecastable returns',swot6:'Environmental friendliness',swot7:'Modern technologies',contactTitle:'Contacts & materials',company:'Company',person:'Contact',requestDeck:'Request pitch deck',requestCall:'Schedule a call',disclaimer:'BTC/USDT & FX are fetched from public sources for reference only.',madeWith:'Made with care for hashrate',calcTitle:'Mini payback calculator',calcNotesTitle:'Assumptions & notes',calcNote1:'The \"$ per TH per day\" parameter is indicative and depends on BTC price and network difficulty. Adjust to current market.',calcNote2:'Pool fees and downtime reduce revenue. Add 1–3% buffer.',calcNote3:'This is a simplified model. Use a detailed financial plan for decisions.',model:'Model',customModel:'Custom configuration',hashrate:'Hashrate',power:'Power draw',poolFee:'Pool fee',revPerTh:'Revenue per 1 TH/day',revHint:'Gross estimate in USD, e.g., 0.05 $/TH/day.',capex:'CAPEX per unit',dailyRevenue:'Daily revenue',dailyPowerCost:'Daily electricity cost',dailyProfit:'Daily profit',payback:'Payback',days:'days',months:'mo.',na:'N/A'}};
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
     </script>
   </body>
 </html>
